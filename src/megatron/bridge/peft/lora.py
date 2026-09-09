@@ -28,6 +28,7 @@ from megatron.bridge.peft.lora_layers import (
     LoRALinear,
     LoRATopKRouter,
     TEFusedLoRALinear,
+    TEFusedLoRAMergeLinear,
 )
 from megatron.bridge.peft.module_matcher import ModuleMatcher
 from megatron.bridge.peft.utils import (
@@ -171,7 +172,6 @@ class LoRA(PEFT, ModuleMatcher):
 
             enable_op_fuser = (
                 not use_grouped_expert_adapter
-                and not is_expert
                 and (
                     self.use_transformer_engine_op_fuser
                     or getattr(module.config, "use_transformer_engine_op_fuser", False)
@@ -218,6 +218,8 @@ class LoRA(PEFT, ModuleMatcher):
             if isinstance(module, TopKRouter):
                 return LoRATopKRouter(module, adapter)
             if enable_op_fuser:
+                if is_expert:
+                    return TEFusedLoRAMergeLinear(module, adapter)
                 return TEFusedLoRALinear(module, adapter)
             else:
                 return LoRALinear(module, adapter)

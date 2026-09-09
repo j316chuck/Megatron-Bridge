@@ -29,7 +29,7 @@ from megatron.bridge.peft import lora as lora_module
 from megatron.bridge.peft import utils as peft_utils
 from megatron.bridge.peft.canonical_lora import CanonicalLoRA
 from megatron.bridge.peft.lora import LoRA, VLMLoRA
-from megatron.bridge.peft.lora_layers import LinearAdapter, LoRALinear, TEFusedLoRALinear
+from megatron.bridge.peft.lora_layers import LinearAdapter, LoRALinear, TEFusedLoRALinear, TEFusedLoRAMergeLinear
 from megatron.bridge.peft.lora_merge import LoRAMerge
 from megatron.bridge.peft.utils import (
     AdapterAttributes,
@@ -251,6 +251,19 @@ class TestLoRA:
             transformed = lora.transform(model, name="linear")
 
         assert isinstance(transformed, TEFusedLoRALinear)
+
+    def test_lora_uses_merge_only_op_fuser_for_expert_linear(self):
+        """Expert LoRA should fuse its output without rebuilding the grouped base GEMM."""
+        model = MockMegatronLinear(8, 8)
+        lora = LoRA(target_modules=["linear_fc2"], use_transformer_engine_op_fuser=True)
+
+        with (
+            patch.object(parallel_state, "get_tensor_model_parallel_world_size", return_value=1),
+            patch("megatron.bridge.peft.lora.is_expert_linear", return_value=True),
+        ):
+            transformed = lora.transform(model, name="linear_fc2")
+
+        assert isinstance(transformed, TEFusedLoRAMergeLinear)
 
     def test_lora_transform_simple_model(self):
         """Test LoRA transformation on a simple model."""
