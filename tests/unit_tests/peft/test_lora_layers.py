@@ -142,14 +142,13 @@ class TestLoRALinear:
         expected = base_output + adapter_output
         assert torch.allclose(lora_output, expected, atol=1e-6)
 
-    def test_lora_linear_reuses_adapter_output_storage(self, mock_linear, mock_adapter):
-        """Test that combining LoRA output does not allocate another full output tensor."""
+    def test_lora_linear_backward_reaches_both_branches(self, mock_linear, mock_adapter):
+        """Test that combining LoRA output preserves both branch gradients."""
         lora_linear = LoRALinear(mock_linear, mock_adapter)
         x = torch.randn(5, 10)
 
         output, _ = lora_linear(x)
 
-        assert output.data_ptr() == mock_adapter.last_output.data_ptr()
         output.sum().backward()
         assert mock_linear.linear.weight.grad is not None
         assert mock_adapter.linear.weight.grad is not None

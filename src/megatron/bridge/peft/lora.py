@@ -113,6 +113,7 @@ class LoRA(PEFT, ModuleMatcher):
     normalize_moe_lora: bool = False
     share_expert_adapters: bool = True
     experts_shared_outer_loras: bool = False
+    use_transformer_engine_op_fuser: bool = False
 
     def transform(self, module: nn.Module, name: Optional[str] = None, prefix: Optional[str] = None) -> nn.Module:
         """
@@ -171,7 +172,10 @@ class LoRA(PEFT, ModuleMatcher):
             enable_op_fuser = (
                 not use_grouped_expert_adapter
                 and not is_expert
-                and getattr(module.config, "use_transformer_engine_op_fuser", False)
+                and (
+                    self.use_transformer_engine_op_fuser
+                    or getattr(module.config, "use_transformer_engine_op_fuser", False)
+                )
                 # TP not yet supported
                 and parallel_state.get_tensor_model_parallel_world_size() == 1
             )

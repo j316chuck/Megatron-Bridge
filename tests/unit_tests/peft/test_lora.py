@@ -29,7 +29,7 @@ from megatron.bridge.peft import lora as lora_module
 from megatron.bridge.peft import utils as peft_utils
 from megatron.bridge.peft.canonical_lora import CanonicalLoRA
 from megatron.bridge.peft.lora import LoRA, VLMLoRA
-from megatron.bridge.peft.lora_layers import LinearAdapter, LoRALinear
+from megatron.bridge.peft.lora_layers import LinearAdapter, LoRALinear, TEFusedLoRALinear
 from megatron.bridge.peft.lora_merge import LoRAMerge
 from megatron.bridge.peft.utils import (
     AdapterAttributes,
@@ -217,6 +217,7 @@ class TestLoRA:
         assert lora.lora_A_init_method == "xavier"
         assert lora.lora_B_init_method == "zero"
         assert lora.share_expert_adapters is True
+        assert lora.use_transformer_engine_op_fuser is False
 
         # Test custom initialization
         custom_lora = LoRA(
@@ -228,6 +229,7 @@ class TestLoRA:
             sequence_parallel_input_regather=True,
             lora_A_init_method="uniform",
             share_expert_adapters=False,
+            use_transformer_engine_op_fuser=True,
         )
         assert custom_lora.target_modules == ["linear_qkv"]
         assert custom_lora.dim == 16
@@ -237,6 +239,18 @@ class TestLoRA:
         assert custom_lora.sequence_parallel_input_regather is True
         assert custom_lora.lora_A_init_method == "uniform"
         assert custom_lora.share_expert_adapters is False
+        assert custom_lora.use_transformer_engine_op_fuser is True
+
+    def test_lora_can_enable_op_fuser_without_global_transformer_flag(self):
+        """LoRA-only fusion must not require enabling unrelated fused MoE kernels."""
+        model = MockMegatronLinear(8, 8)
+        assert model.config.use_transformer_engine_op_fuser is False
+        lora = LoRA(target_modules=["linear"], use_transformer_engine_op_fuser=True)
+
+        with patch.object(parallel_state, "get_tensor_model_parallel_world_size", return_value=1):
+            transformed = lora.transform(model, name="linear")
+
+        assert isinstance(transformed, TEFusedLoRALinear)
 
     def test_lora_transform_simple_model(self):
         """Test LoRA transformation on a simple model."""
