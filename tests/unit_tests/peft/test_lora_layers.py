@@ -47,8 +47,8 @@ class MockLinearWithTupleReturn(nn.Module):
 
     def forward(self, x, *args, **kwargs):
         """Return tuple format like Megatron linear layers."""
-        output = self.linear(x)
-        return output, None  # (output, bias)
+        self.last_output = self.linear(x)
+        return self.last_output, None  # (output, bias)
 
     @property
     def weight(self):
@@ -140,6 +140,18 @@ class TestLoRALinear:
         # Verify addition
         expected = base_output + adapter_output
         assert torch.allclose(lora_output, expected, atol=1e-6)
+
+    def test_lora_linear_reuses_base_output_storage(self, mock_linear, mock_adapter):
+        """Test that combining LoRA output does not allocate another full output tensor."""
+        lora_linear = LoRALinear(mock_linear, mock_adapter)
+        x = torch.randn(5, 10)
+
+        output, _ = lora_linear(x)
+
+        assert output.data_ptr() == mock_linear.last_output.data_ptr()
+        output.sum().backward()
+        assert mock_linear.linear.weight.grad is not None
+        assert mock_adapter.linear.weight.grad is not None
 
     def test_lora_linear_weight_returns_effective_weight(self):
         """Test that LoRALinear.weight includes the active LoRA delta."""
