@@ -265,6 +265,19 @@ class TestLoRA:
 
         assert isinstance(transformed, TEFusedLoRAMergeLinear)
 
+    def test_lora_keeps_expert_fc1_on_unfused_path(self):
+        """Expert fc1 fusion retains too much activation memory at long context."""
+        model = MockMegatronLinear(8, 8)
+        lora = LoRA(target_modules=["linear_fc1"], use_transformer_engine_op_fuser=True)
+
+        with (
+            patch.object(parallel_state, "get_tensor_model_parallel_world_size", return_value=1),
+            patch("megatron.bridge.peft.lora.is_expert_linear", return_value=True),
+        ):
+            transformed = lora.transform(model, name="linear_fc1")
+
+        assert type(transformed) is LoRALinear
+
     def test_lora_transform_simple_model(self):
         """Test LoRA transformation on a simple model."""
         model = SimpleModel()

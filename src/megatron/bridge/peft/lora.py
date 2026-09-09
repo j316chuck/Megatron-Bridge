@@ -219,7 +219,9 @@ class LoRA(PEFT, ModuleMatcher):
                 return LoRATopKRouter(module, adapter)
             if enable_op_fuser:
                 if is_expert:
-                    return TEFusedLoRAMergeLinear(module, adapter)
+                    if full_name.endswith("linear_fc2"):
+                        return TEFusedLoRAMergeLinear(module, adapter)
+                    return LoRALinear(module, adapter)
                 return TEFusedLoRALinear(module, adapter)
             else:
                 return LoRALinear(module, adapter)
