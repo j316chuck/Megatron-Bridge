@@ -637,7 +637,8 @@ class TestParallelLinearAdapter:
         mock_linear_in = Mock()
         mock_linear_out = Mock()
         mock_linear_in.return_value = (torch.randn(5, 16), None)
-        mock_linear_out.return_value = (torch.randn(5, 10), None)
+        linear_out = torch.randn(5, 10)
+        mock_linear_out.return_value = (linear_out, None)
 
         # When input_is_parallel=False, both linear_in and linear_out are ColumnParallelLinear
         # So we need to set up side_effect to return different mocks for each call
@@ -656,9 +657,32 @@ class TestParallelLinearAdapter:
         output = adapter(x)
 
         assert output.shape == (5, 10)
-        # Verify scaling is applied
-        expected_scale = adapter.alpha / adapter.dim
-        assert expected_scale > 0
+        assert output.data_ptr() == linear_out.data_ptr()
+
+    @patch("megatron.bridge.peft.utils.ColumnParallelLinear")
+    @patch("megatron.bridge.peft.utils.RowParallelLinear")
+    def test_parallel_linear_adapter_forward_applies_non_identity_scale(
+        self, mock_row_linear, mock_col_linear, mock_config
+    ):
+        """Test non-identity adapter scaling."""
+        mock_linear_in = Mock(return_value=(torch.randn(5, 16), None))
+        linear_out = torch.randn(5, 10)
+        mock_linear_out = Mock(return_value=(linear_out, None))
+        mock_col_linear.side_effect = [mock_linear_in, mock_linear_out]
+
+        adapter = ParallelLinearAdapter(
+            in_features=20,
+            out_features=10,
+            dim=16,
+            alpha=32,
+            base_linear_name="test",
+            input_is_parallel=False,
+            model_parallel_config=mock_config,
+        )
+
+        output = adapter(torch.randn(5, 20))
+
+        torch.testing.assert_close(output, linear_out * 2)
 
     @patch("megatron.bridge.peft.utils.gather_from_sequence_parallel_region")
     @patch("megatron.bridge.peft.utils.ColumnParallelLinear")

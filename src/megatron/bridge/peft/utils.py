@@ -1270,7 +1270,9 @@ class ParallelLinearAdapter(nn.Module):
         if self.dropout_position == "post":
             x = self.dropout(x)
 
-        x = x * (self.alpha / self.dim)
+        scale = self.alpha / self.dim
+        if scale != 1:
+            x = x * scale
 
         if pad_len > 0:
             # Remove MoE padding.
